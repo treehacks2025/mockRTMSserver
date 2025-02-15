@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
@@ -6,12 +8,19 @@ const cors = require('cors');
 const https = require('https');
 const fetch = require('node-fetch');
 const CredentialsManager = require('../utils/credentialsManager');
+const FormData = require('form-data');
 
 const router = express.Router();
 
 // Add middleware
 router.use(cors());
 router.use(express.json());
+
+// Add middleware for audio/wav files
+router.use('/transcribe', express.raw({ 
+    type: 'audio/wav',
+    limit: '10mb'
+}));
 
 // Create a custom HTTPS agent that ignores SSL certificate validation
 const httpsAgent = new https.Agent({
@@ -145,6 +154,118 @@ router.post("/send-webhook", async (req, res) => {
             details: error.cause ? error.cause.message : 'No additional details',
             attempted_payload: payload,
         });
+    }
+});
+
+router.post('/transcribe', async (req, res) => {
+    try {
+        const model = req.query.model || 'whisper-large-v3-turbo';
+        const responseFormat = req.query.response_format || 'json';
+        
+        if (!req.body || !Buffer.isBuffer(req.body)) {
+            throw new Error('Invalid audio data received');
+        }
+
+        const tempFilePath = '/tmp/audio.wav';
+        fs.writeFileSync(tempFilePath, req.body);
+
+        const form = new FormData();
+        form.append('file', fs.createReadStream(tempFilePath));
+        form.append('model', model);
+        form.append('response_format', responseFormat);
+
+        const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+                ...form.getHeaders() // FormDataのヘッダーを追加
+            },
+            body: form
+        });
+
+        fs.unlinkSync(tempFilePath);
+
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`Groq API error: ${response.status} - ${errorData}`);
+        }
+
+        const result = await response.json();
+        res.json(result);
+    } catch (error) {
+        console.error('Transcription error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/text-to-speech', async (req, res) => {
+    try {
+        const { text, voiceId = "JBFqnCBsd6RMkjVDRZzb" } = req.body;
+        
+        if (!text) {
+            throw new Error('Text is required');
+        }
+
+        const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+            method: 'POST',
+            headers: {
+                'Accept': 'audio/mpeg',
+                'Content-Type': 'application/json',
+                'xi-api-key': process.env.ELEVENLABS_API_KEY
+            },
+            body: JSON.stringify({
+                text,
+                model_id: "eleven_multilingual_v2",
+                voice_settings: {
+                    stability: 0.5,
+                    similarity_boost: 0.5
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`ElevenLabs API Error: ${response.status} - ${errorData}`);
+        }
+
+        // Get audio data as buffer
+        const audioBuffer = await response.arrayBuffer();
+
+        console.log('audioBuffer', audioBuffer);
+        
+        // Save as temporary file
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `speech_${timestamp}.mp3`;
+        const filePath = path.join('/tmp', filename);
+        
+        fs.writeFileSync(filePath, Buffer.from(audioBuffer));
+
+        // Send file as response
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        
+        // Use streaming to send the file
+        const fileStream = fs.createReadStream(filePath);
+        fileStream.pipe(res);
+        
+        // Delete temporary file after streaming is complete
+        fileStream.on('end', () => {
+            fs.unlinkSync(filePath);
+        });
+
+        // Handle stream errors
+        fileStream.on('error', (error) => {
+            console.error('File stream error:', error);
+            if (!res.headersSent) {
+                res.status(500).json({ error: 'File streaming error' });
+            }
+        });
+
+    } catch (error) {
+        console.error('Text-to-Speech Error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: error.message });
+        }
     }
 });
 

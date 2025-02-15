@@ -19,7 +19,6 @@ const CONFIG = {
         DEFAULT_PORT: 8081,
         DEFAULT_HOST: '0.0.0.0'
     },
-    GROQ_API_KEY: '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'
 };
 
 // Global state
