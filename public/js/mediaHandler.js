@@ -165,17 +165,67 @@ class MediaHandler {
     }
 
     static async setupSpeechRecognition() {
+        const logDebug = (msg) => {
+            console.log(`[Speech Recognition] ${msg}`);
+            if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN) {
+                RTMSState.mediaSocket.send(JSON.stringify({
+                    msg_type: "DEBUG_LOG",
+                    content: { message: `[Speech Recognition] ${msg}` }
+                }));
+            }
+        };
+
+        logDebug('Setting up Speech Recognition');
+        
         if ('webkitSpeechRecognition' in window) {
             RTMSState.recognition = new webkitSpeechRecognition();
             RTMSState.recognition.continuous = true;
             RTMSState.recognition.interimResults = true;
             RTMSState.recognition.lang = 'en-US';
 
+            // 各種イベントハンドラーの追加
+            RTMSState.recognition.onstart = () => logDebug('Recognition started');
+            RTMSState.recognition.onend = () => {
+                // 終了理由をより詳しく調査
+                const audioTracks = RTMSState.mediaStream?.getAudioTracks() || [];
+                logDebug('Recognition ended. Debugging info:');
+                logDebug(`- Audio tracks: ${audioTracks.length}`);
+                audioTracks.forEach((track, index) => {
+                    logDebug(`- Track ${index}: enabled=${track.enabled}, muted=${track.muted}, readyState=${track.readyState}`);
+                });
+                logDebug(`- Network status: ${navigator.onLine ? 'online' : 'offline'}`);
+
+                if (RTMSState.sessionState === CONFIG.STATES.ACTIVE && RTMSState.isStreamingEnabled) {
+                    setTimeout(() => {
+                        try {
+                            RTMSState.recognition.start();
+                            logDebug('Recognition restarted');
+                        } catch (error) {
+                            logDebug(`Failed to restart recognition: ${error.message}`);
+                        }
+                    }, 1000);
+                }
+            };
+            RTMSState.recognition.onerror = (event) => {
+                logDebug(`Recognition error: ${event.error}`);
+                logDebug(`Error details: ${JSON.stringify({
+                    error: event.error,
+                    message: event.message,
+                    timestamp: new Date().toISOString()
+                })}`);
+            };
+            RTMSState.recognition.onnomatch = () => logDebug('No speech was recognized');
+
             RTMSState.recognition.onresult = (event) => {
                 let transcript = '';
+                logDebug(`Processing ${event.results.length} results`);
+                
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
                         transcript += event.results[i][0].transcript;
+                        logDebug(`Final transcript: ${transcript}`);
+                    } else {
+                        logDebug(`Interim result: ${event.results[i][0].transcript}`);
                     }
                 }
                 
@@ -183,7 +233,8 @@ class MediaHandler {
                 document.getElementById('transcript').innerText = transcript;
 
                 // Send transcript through WebSocket
-                if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN) {
+                if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN && transcript) {
+                    logDebug('Sending transcript to server');
                     RTMSState.mediaSocket.send(JSON.stringify({
                         msg_type: "MEDIA_DATA_TRANSCRIPT",
                         content: {
@@ -195,9 +246,14 @@ class MediaHandler {
                 }
             };
 
-            RTMSState.recognition.start();
+            try {
+                RTMSState.recognition.start();
+                logDebug('Recognition start command issued');
+            } catch (error) {
+                logDebug(`Failed to start recognition: ${error.message}`);
+            }
         } else {
-            console.warn('Speech Recognition API not supported in this browser');
+            logDebug('Speech Recognition API not supported in this browser');
         }
     }
 

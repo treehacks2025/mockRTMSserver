@@ -93,6 +93,7 @@ class WebSocketHandler {
                 return;
             }
 
+            console.log('Received WebSocket message:', data);
             handleWebSocketMessage(event.data);
         } catch (error) {
             console.error('Error handling websocket message:', error);
@@ -349,4 +350,81 @@ class WebSocketHandler {
 
 function onSignalingEvent(data) {
     handleSignalingEvent(data);
+}
+
+function handleWebSocketMessage(data) {
+    try {
+        const message = JSON.parse(data);
+        console.log('WebSocket message received:', message);
+
+        // メッセージタイプに基づいて処理を分岐
+        switch (message.msg_type) {
+            case 'MEDIA_DATA_VIDEO':
+            case 'MEDIA_DATA_AUDIO':
+                UIController.handleIncomingMedia(message);
+                break;
+
+            case 'SESSION_STATE_UPDATE':
+                handleSessionStateUpdate(message);
+                break;
+
+            case 'SIGNALING_LOG':
+                UIController.addSignalingLog(message.content.event, message.content.details);
+                break;
+
+            case 'KEEP_ALIVE_REQ':
+                if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN) {
+                    RTMSState.mediaSocket.send(JSON.stringify({
+                        msg_type: 'KEEP_ALIVE_RESP',
+                        timestamp: Date.now()
+                    }));
+                }
+                break;
+
+            case 'STREAM_STATE_UPDATE':
+                if (message.state === 'TERMINATED') {
+                    UIController.handleStop();
+                    WebSocketHandler.closeConnections();
+                }
+                break;
+
+            default:
+                console.log('未処理のメッセージタイプ:', message.msg_type);
+        }
+    } catch (error) {
+        console.error('WebSocketメッセージの処理中にエラーが発生しました:', error);
+    }
+}
+
+function handleSessionStateUpdate(message) {
+    const { state, ui_state } = message;
+    
+    // セッション状態を更新
+    RTMSState.sessionState = state;
+
+    // UIの状態を更新
+    if (ui_state) {
+        Object.entries(ui_state).forEach(([buttonId, properties]) => {
+            const button = document.getElementById(buttonId);
+            if (button) {
+                Object.entries(properties).forEach(([prop, value]) => {
+                    button[prop] = value;
+                });
+            }
+        });
+    }
+
+    // 状態に応じた追加処理
+    switch (state) {
+        case 'PAUSED':
+            MediaHandler.stopRecording();
+            break;
+        case 'RESUMED':
+            MediaHandler.startRecording();
+            break;
+        case 'STOPPED':
+            MediaHandler.stopRecording();
+            UIController.handleStop();
+            break;
+    }
 } 
