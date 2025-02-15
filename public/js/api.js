@@ -80,4 +80,73 @@ class APIHandler {
             document.getElementById("sendBtn").disabled = true;
         }
     }
-} 
+
+    static async transcribeAudio(audioBlob) {
+        try {
+            UIController.addSystemLog('Groq', 'Sending transcription request');
+            
+            const url = new URL('/api/transcribe', window.location.origin);
+            url.searchParams.append('model', 'whisper-large-v3-turbo');
+            url.searchParams.append('response_format', 'json');
+    
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'audio/wav'
+                },
+                body: audioBlob
+            });
+    
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+    
+            const result = await response.json();
+            UIController.addSystemLog('Groq', 'Transcription successful');
+            
+            return result.text;
+        } catch (error) {
+            console.error("Transcription error:", error);
+            UIController.addSystemLog('Groq', 'Transcription error', { error: error.message });
+            throw error;
+        }
+    }
+
+    static async textToSpeech(text, voiceId = "JBFqnCBsd6RMkjVDRZzb") {
+        try {
+            UIController.addSystemLog('ElevenLabs', 'Sending text-to-speech request');
+            
+            const response = await fetch("/api/text-to-speech", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ text, voiceId })
+            });
+    
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`API error: ${response.status} - ${errorText}`);
+            }
+
+            // Verify content type
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('audio/mpeg')) {
+                throw new Error('Invalid response content type');
+            }
+
+            const audioBlob = await response.blob();
+            if (audioBlob.size === 0) {
+                throw new Error('Received empty audio response');
+            }
+
+            UIController.addSystemLog('ElevenLabs', 'Text-to-speech conversion successful');
+            
+            return audioBlob;
+        } catch (error) {
+            console.error("Text-to-speech error:", error);
+            UIController.addSystemLog('ElevenLabs', 'Text-to-speech error', { error: error.message });
+            throw error;
+        }
+    }
+}

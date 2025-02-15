@@ -4,6 +4,10 @@ class MediaHandler {
         try {
             UIController.addSignalingLog('Starting Media Stream', { serverUrl });
             
+            // Initialize conversation manager
+            RTMSState.conversationManager = new ConversationManager();
+            await RTMSState.conversationManager.initialize();
+            
             // If we already have a media stream, reuse it
             if (!RTMSState.mediaStream) {
                 RTMSState.mediaStream = await navigator.mediaDevices.getUserMedia({ 
@@ -188,28 +192,23 @@ class MediaHandler {
                         // Convert audio data to WAV format
                         const wavBlob = await this.float32ArrayToWav(audio, 16000);
                         
-                        // Create FormData
-                        const formData = new FormData();
-                        formData.append('file', wavBlob, 'audio.wav');
-                        formData.append('model', 'whisper-large-v3-turbo');
-                        formData.append('response_format', 'json');
+                        // Create a File object from the Blob
+                        const audioFile = new File([wavBlob], 'audio.wav', { type: 'audio/wav' });
+                        
+                        // Send to Groq API through APIHandler
+                        const transcript = await APIHandler.transcribeAudio(audioFile);
 
-                        // Send request to Groq API
-                        const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': `Bearer ${CONFIG.GROQ_API_KEY}`
-                            },
-                            body: formData
-                        });
+                        console.log('Received transcript:', transcript);
 
-                        if (!response.ok) {
-                            throw new Error(`API error: ${response.status}`);
+                        // Process conversation state if conversation manager exists
+                        if (RTMSState.conversationManager) {
+                            const result = await RTMSState.conversationManager.processTranscript(transcript);
+                            if (result.success) {
+                                console.log('Conversation progressed:', result.newState);
+                                UIController.addSystemLog('Conversation', `State advanced to: ${result.newState}`);
+                            }
                         }
-
-                        const result = await response.json();
-                        const transcript = result.text;
-
+                        
                         // Display transcription result
                         document.getElementById('transcript').innerText = transcript;
 
