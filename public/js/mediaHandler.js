@@ -27,25 +27,6 @@ class MediaHandler {
             
             await WebSocketHandler.setupWebSocket(serverUrl);
 
-            // const firstScript = `Good morning, Taiki. Discover peace in every sip. This is the beginning of your first tea ritual.
-            // You have a couple of options here. You can start your first ritual now.
-            // If you're ready, simply say 'Start'.`;
-
-            // const audioBlob = await APIHandler.textToSpeech(firstScript);
-            // console.log('audioBlob', audioBlob);
-            // const blobUrl = URL.createObjectURL(audioBlob);
-            // const audio = new Audio(blobUrl);
-
-            // try {
-            //     await audio.play();
-            //     audio.onended = () => {
-            //         URL.revokeObjectURL(blobUrl);
-            //     };
-            // } catch (error) {
-            //     console.error('failed to play audio', error);
-            //     UIController.showError(`failed to play audio: ${error.message}`);
-            // }
-
         } catch (error) {
             UIController.addSignalingLog('Media Stream Error', { error: error.message });
             console.error("Error starting media stream:", error);
