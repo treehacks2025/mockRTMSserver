@@ -357,7 +357,7 @@ function handleWebSocketMessage(data) {
         const message = JSON.parse(data);
         console.log('WebSocket message received:', message);
 
-        // メッセージタイプに基づいて処理を分岐
+        // Branch processing based on message type
         switch (message.msg_type) {
             case 'MEDIA_DATA_VIDEO':
             case 'MEDIA_DATA_AUDIO':
@@ -389,20 +389,20 @@ function handleWebSocketMessage(data) {
                 break;
 
             default:
-                console.log('未処理のメッセージタイプ:', message.msg_type);
+                console.log('Unhandled message type:', message.msg_type);
         }
     } catch (error) {
-        console.error('WebSocketメッセージの処理中にエラーが発生しました:', error);
+        console.error('Error occurred while processing WebSocket message:', error);
     }
 }
 
 function handleSessionStateUpdate(message) {
     const { state, ui_state } = message;
     
-    // セッション状態を更新
+    // Update session state
     RTMSState.sessionState = state;
 
-    // UIの状態を更新
+    // Update UI state
     if (ui_state) {
         Object.entries(ui_state).forEach(([buttonId, properties]) => {
             const button = document.getElementById(buttonId);
@@ -414,7 +414,7 @@ function handleSessionStateUpdate(message) {
         });
     }
 
-    // 状態に応じた追加処理
+    // Additional processing based on state
     switch (state) {
         case 'PAUSED':
             MediaHandler.stopRecording();
