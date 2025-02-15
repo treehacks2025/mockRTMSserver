@@ -191,7 +191,7 @@ class MediaHandler {
                         // Create FormData
                         const formData = new FormData();
                         formData.append('file', wavBlob, 'audio.wav');
-                        formData.append('model', 'whisper-large-v3');
+                        formData.append('model', 'whisper-large-v3-turbo');
                         formData.append('response_format', 'json');
 
                         // Send request to Groq API
