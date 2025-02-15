@@ -165,96 +165,132 @@ class MediaHandler {
     }
 
     static async setupSpeechRecognition() {
-        const logDebug = (msg) => {
-            console.log(`[Speech Recognition] ${msg}`);
-            if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN) {
-                RTMSState.mediaSocket.send(JSON.stringify({
-                    msg_type: "DEBUG_LOG",
-                    content: { message: `[Speech Recognition] ${msg}` }
-                }));
+        if (!window.ort) {
+            console.error('ONNX Runtime Web is not loaded');
+            UIController.addSystemLog('Speech', 'ONNX Runtime Web is not loaded');
+            return;
+        }
+
+        try {
+            console.log('Setting up VAD...');
+            UIController.addSystemLog('Speech', 'Setting up VAD...');
+
+            const myvad = await vad.MicVAD.new({
+                onSpeechStart: () => {
+                    console.log('Speech detection started');
+                    UIController.addSystemLog('Speech', 'Speech detection started');
+                },
+                onSpeechEnd: async (audio) => {
+                    console.log('Speech detection ended, audio length:', audio.length);
+                    UIController.addSystemLog('Speech', `Speech detection ended, audio length: ${audio.length}`);
+                    
+                    try {
+                        // Convert audio data to WAV format
+                        const wavBlob = await this.float32ArrayToWav(audio, 16000);
+                        
+                        // Create FormData
+                        const formData = new FormData();
+                        formData.append('file', wavBlob, 'audio.wav');
+                        formData.append('model', 'whisper-large-v3-turbo');
+                        formData.append('response_format', 'json');
+
+                        // Send request to Groq API
+                        const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${CONFIG.GROQ_API_KEY}`
+                            },
+                            body: formData
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`API error: ${response.status}`);
+                        }
+
+                        const result = await response.json();
+                        const transcript = result.text;
+
+                        // Display transcription result
+                        document.getElementById('transcript').innerText = transcript;
+
+                        // Send result via WebSocket if connected
+                        if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN && transcript) {
+                            RTMSState.mediaSocket.send(JSON.stringify({
+                                msg_type: "MEDIA_DATA_TRANSCRIPT",
+                                content: {
+                                    user_id: 0,
+                                    data: transcript,
+                                    timestamp: Date.now()
+                                }
+                            }));
+                        }
+
+                    } catch (error) {
+                        console.error('Speech recognition error:', error);
+                        UIController.addSystemLog('Speech', 'Speech recognition error', { error: error.message });
+                    }
+                },
+                onError: (error) => {
+                    console.error('VAD error:', error);
+                    UIController.addSystemLog('Speech', 'VAD error', { error: error.message });
+                }
+            });
+
+            // Save VAD instance to RTMSState
+            RTMSState.vad = myvad;
+            
+            // Remove state check and start VAD immediately
+            console.log('Starting VAD...');
+            UIController.addSystemLog('Speech', 'Starting VAD...');
+            
+            try {
+                await myvad.start();
+                console.log('VAD started successfully');
+                UIController.addSystemLog('Speech', 'VAD started successfully');
+            } catch (startError) {
+                console.error('Failed to start VAD:', startError);
+                UIController.addSystemLog('Speech', 'Failed to start VAD', { error: startError.message });
+            }
+
+        } catch (error) {
+            console.error('Speech recognition setup error:', error);
+            UIController.addSystemLog('Speech', 'Setup error', { error: error.message });
+        }
+    }
+
+    static async float32ArrayToWav(float32Array, sampleRate) {
+        const buffer = new ArrayBuffer(44 + float32Array.length * 2);
+        const view = new DataView(buffer);
+
+        // WAVヘッダーの書き込み
+        const writeString = (view, offset, string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
             }
         };
 
-        logDebug('Setting up Speech Recognition');
-        
-        if ('webkitSpeechRecognition' in window) {
-            RTMSState.recognition = new webkitSpeechRecognition();
-            RTMSState.recognition.continuous = true;
-            RTMSState.recognition.interimResults = true;
-            RTMSState.recognition.lang = 'en-US';
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 32 + float32Array.length * 2, true);
+        writeString(view, 8, 'WAVE');
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeString(view, 36, 'data');
+        view.setUint32(40, float32Array.length * 2, true);
 
-            // 各種イベントハンドラーの追加
-            RTMSState.recognition.onstart = () => logDebug('Recognition started');
-            RTMSState.recognition.onend = () => {
-                // 終了理由をより詳しく調査
-                const audioTracks = RTMSState.mediaStream?.getAudioTracks() || [];
-                logDebug('Recognition ended. Debugging info:');
-                logDebug(`- Audio tracks: ${audioTracks.length}`);
-                audioTracks.forEach((track, index) => {
-                    logDebug(`- Track ${index}: enabled=${track.enabled}, muted=${track.muted}, readyState=${track.readyState}`);
-                });
-                logDebug(`- Network status: ${navigator.onLine ? 'online' : 'offline'}`);
-
-                if (RTMSState.sessionState === CONFIG.STATES.ACTIVE && RTMSState.isStreamingEnabled) {
-                    setTimeout(() => {
-                        try {
-                            RTMSState.recognition.start();
-                            logDebug('Recognition restarted');
-                        } catch (error) {
-                            logDebug(`Failed to restart recognition: ${error.message}`);
-                        }
-                    }, 1000);
-                }
-            };
-            RTMSState.recognition.onerror = (event) => {
-                logDebug(`Recognition error: ${event.error}`);
-                logDebug(`Error details: ${JSON.stringify({
-                    error: event.error,
-                    message: event.message,
-                    timestamp: new Date().toISOString()
-                })}`);
-            };
-            RTMSState.recognition.onnomatch = () => logDebug('No speech was recognized');
-
-            RTMSState.recognition.onresult = (event) => {
-                let transcript = '';
-                logDebug(`Processing ${event.results.length} results`);
-                
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        transcript += event.results[i][0].transcript;
-                        logDebug(`Final transcript: ${transcript}`);
-                    } else {
-                        logDebug(`Interim result: ${event.results[i][0].transcript}`);
-                    }
-                }
-                
-                // Update UI
-                document.getElementById('transcript').innerText = transcript;
-
-                // Send transcript through WebSocket
-                if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN && transcript) {
-                    logDebug('Sending transcript to server');
-                    RTMSState.mediaSocket.send(JSON.stringify({
-                        msg_type: "MEDIA_DATA_TRANSCRIPT",
-                        content: {
-                            user_id: 0,
-                            data: transcript,
-                            timestamp: Date.now()
-                        }
-                    }));
-                }
-            };
-
-            try {
-                RTMSState.recognition.start();
-                logDebug('Recognition start command issued');
-            } catch (error) {
-                logDebug(`Failed to start recognition: ${error.message}`);
-            }
-        } else {
-            logDebug('Speech Recognition API not supported in this browser');
+        // 音声データの書き込み
+        const volume = 0.5;
+        for (let i = 0; i < float32Array.length; i++) {
+            const sample = Math.max(-1, Math.min(1, float32Array[i]));
+            view.setInt16(44 + i * 2, sample * 0x7FFF * volume, true);
         }
+
+        return new Blob([buffer], { type: 'audio/wav' });
     }
 
     static cleanup() {
