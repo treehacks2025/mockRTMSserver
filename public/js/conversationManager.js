@@ -29,6 +29,13 @@ class ConversationManager {
                 explanation: ''
             }
         };
+        this.expressionHistory = {
+            furrowed: [],
+            smiling: [],
+            relaxed: [],
+            eyesClosed: [],
+            eyesFocused: []
+        };
         this.expressionCheckInterval = null;
         this.states = {
             INITIAL: {
@@ -161,30 +168,35 @@ class ConversationManager {
 
         this.expressionCheckInterval = setInterval(async () => {
             try {
+                const timestamp = Date.now();
+                
                 // Check for furrowed brow
                 const furrowedResult = await this.analyzeExpression('signs of furrowed brow or tension between eyebrows');
                 this.expressionStates.furrowed = furrowedResult;
-                console.log('Furrowed brow check:', furrowedResult);
+                this.expressionHistory.furrowed.push({ ...furrowedResult, timestamp });
 
                 // Check for smile
                 const smilingResult = await this.analyzeExpression('upturned corners of the mouth or signs of smiling');
                 this.expressionStates.smiling = smilingResult;
-                console.log('Smile check:', smilingResult);
+                this.expressionHistory.smiling.push({ ...smilingResult, timestamp });
 
                 // Check for relaxed expression
                 const relaxedResult = await this.analyzeExpression('overall relaxed facial expression without tension');
                 this.expressionStates.relaxed = relaxedResult;
-                console.log('Relaxed expression check:', relaxedResult);
+                this.expressionHistory.relaxed.push({ ...relaxedResult, timestamp });
 
                 // New eye state checks
                 const eyesClosedResult = await this.analyzeExpression('eyes closed or nearly closed');
                 this.expressionStates.eyesClosed = eyesClosedResult;
+                this.expressionHistory.eyesClosed.push({ ...eyesClosedResult, timestamp });
 
                 const eyesFocusedResult = await this.analyzeExpression('eyes focused and steady, looking directly at camera, not wandering or darting around');
                 this.expressionStates.eyesFocused = eyesFocusedResult;
+                this.expressionHistory.eyesFocused.push({ ...eyesFocusedResult, timestamp });
 
-                // Update UI
+                // Update UI with current states and history
                 UIController.updateExpressionStates(this.expressionStates);
+                UIController.updateExpressionDashboard(this.expressionHistory);
 
             } catch (error) {
                 console.error('Expression check error:', error);
