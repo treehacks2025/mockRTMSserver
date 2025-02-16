@@ -54,6 +54,7 @@
                 <div class="log-tabs">
                     <button class="tab-button active" data-tab="transcripts">Transcripts</button>
                     <button class="tab-button" data-tab="logs">Logs</button>
+                    <button class="tab-button" data-tab="expressions">Expressions</button>
                 </div>
 
                 <div id="transcripts-container" class="logs-container">
@@ -62,6 +63,46 @@
 
                 <div id="logs-container" class="logs-container" style="display: none;">
                     <div id="system-logs"></div>
+                </div>
+
+                <div id="expressions-container" class="logs-container" style="display: none;">
+                    <div id="expression-states">
+                        <div class="expression-card" id="furrowed-state">
+                            <div class="expression-icon"><i class="fas fa-meh"></i></div>
+                            <div class="expression-title">Furrowed Brow</div>
+                            <div class="expression-status"></div>
+                            <div class="expression-confidence"></div>
+                            <div class="expression-explanation"></div>
+                        </div>
+                        <div class="expression-card" id="smiling-state">
+                            <div class="expression-icon"><i class="fas fa-smile"></i></div>
+                            <div class="expression-title">Smiling</div>
+                            <div class="expression-status"></div>
+                            <div class="expression-confidence"></div>
+                            <div class="expression-explanation"></div>
+                        </div>
+                        <div class="expression-card" id="relaxed-state">
+                            <div class="expression-icon"><i class="fas fa-face-smile-relaxed"></i></div>
+                            <div class="expression-title">Relaxed</div>
+                            <div class="expression-status"></div>
+                            <div class="expression-confidence"></div>
+                            <div class="expression-explanation"></div>
+                        </div>
+                        <div class="expression-card" id="eyesClosed-state">
+                            <div class="expression-icon"><i class="fas fa-eye-slash"></i></div>
+                            <div class="expression-title">Eyes Closed</div>
+                            <div class="expression-status"></div>
+                            <div class="expression-confidence"></div>
+                            <div class="expression-explanation"></div>
+                        </div>
+                        <div class="expression-card" id="eyesFocused-state">
+                            <div class="expression-icon"><i class="fas fa-eye"></i></div>
+                            <div class="expression-title">Eyes Focused</div>
+                            <div class="expression-status"></div>
+                            <div class="expression-confidence"></div>
+                            <div class="expression-explanation"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -102,6 +143,8 @@
                         tabName === 'transcripts' ? 'block' : 'none';
                     document.getElementById('logs-container').style.display = 
                         tabName === 'logs' ? 'block' : 'none';
+                    document.getElementById('expressions-container').style.display = 
+                        tabName === 'expressions' ? 'block' : 'none';
                 });
             });
 

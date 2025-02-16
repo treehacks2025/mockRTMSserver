@@ -9,6 +9,7 @@ const https = require('https');
 const fetch = require('node-fetch');
 const CredentialsManager = require('../utils/credentialsManager');
 const FormData = require('form-data');
+const OpenAI = require('openai');
 
 const router = express.Router();
 
@@ -266,6 +267,63 @@ router.post('/text-to-speech', async (req, res) => {
         if (!res.headersSent) {
             res.status(500).json({ error: error.message });
         }
+    }
+});
+
+router.post('/analyze-expression', async (req, res) => {
+    try {
+        const { imageUrl, query } = req.body;
+
+        if (!imageUrl || !query) {
+            throw new Error('Image URL and query are required');
+        }
+
+        const openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY
+        });
+
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+                {
+                    role: "system",
+                    content: "You are an expression analyzer. Analyze the facial expression in the image and respond with a JSON object containing whether the expression matches the query and provide explanation. Response should be in format: {matches: boolean, confidence: number, explanation: string}"
+                },
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: `Does this person's expression show ${query}?` },
+                        {
+                            type: "image_url",
+                            image_url: {
+                                url: imageUrl
+                            }
+                        }
+                    ]
+                }
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 500
+        });
+
+        if (response.choices[0].finish_reason === "length") {
+            throw new Error("Response was truncated due to length");
+        }
+
+        if (response.choices[0].finish_reason === "content_filter") {
+            throw new Error("Response was filtered due to content restrictions");
+        }
+
+        const result = JSON.parse(response.choices[0].message.content);
+        res.json(result);
+
+    } catch (error) {
+        console.error('Expression Analysis Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.cause ? error.cause.message : 'No additional details'
+        });
     }
 });
 

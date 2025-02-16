@@ -245,14 +245,41 @@ class UIController {
     }
 
     static updateVideoElement(videoData) {
-        const blob = new Blob([Uint8Array.from(atob(videoData), c => c.charCodeAt(0))], 
-            { type: 'video/webm' });
-        const videoUrl = URL.createObjectURL(blob);
         const mediaVideo = document.getElementById('mediaVideo');
-        if (mediaVideo.src) {
-            URL.revokeObjectURL(mediaVideo.src);
-        }
-        mediaVideo.src = videoUrl;
+        const newBlob = new Blob([Uint8Array.from(atob(videoData), c => c.charCodeAt(0))], 
+            { type: 'video/webm' });
+        
+        const currentTime = mediaVideo.currentTime;
+        const videoHeight = mediaVideo.videoHeight;
+        const videoWidth = mediaVideo.videoWidth;
+        
+        // Create a new video element and hide it for preloading
+        const tempVideo = document.createElement('video');
+        tempVideo.style.display = 'none';
+        document.body.appendChild(tempVideo);
+        
+        // Create a new URL
+        const newVideoUrl = URL.createObjectURL(newBlob);
+        
+        const switchVideo = () => {
+            if (mediaVideo.src) {
+                const oldUrl = mediaVideo.src;
+                URL.revokeObjectURL(oldUrl);
+            }
+            mediaVideo.src = newVideoUrl;
+            mediaVideo.currentTime = currentTime;
+            if (videoWidth && videoHeight) {
+                mediaVideo.style.height = `${(mediaVideo.offsetWidth * videoHeight / videoWidth)}px`;
+            }
+            document.body.removeChild(tempVideo);
+        };
+
+        // Use the loadeddata event to preload the temporary video element
+        tempVideo.onloadeddata = () => {
+            switchVideo();
+        };
+        
+        tempVideo.src = newVideoUrl;
     }
 
     static updateAudioElement(audioData) {
@@ -464,6 +491,33 @@ class UIController {
             });
             RTMSState.sessionState = message.state;
         }
+    }
+
+    static updateExpressionStates(expressionStates) {
+        Object.entries(expressionStates).forEach(([key, state]) => {
+            const card = document.getElementById(`${key}-state`);
+            if (!card) return;
+
+            // Update active state
+            card.classList.toggle('active', state.matches);
+
+            // Update status
+            const statusDiv = card.querySelector('.expression-status');
+            statusDiv.innerHTML = `
+                <span class="status-indicator ${state.matches ? 'active' : 'inactive'}"></span>
+                <span>${state.matches ? 'Detected' : 'Not Detected'}</span>
+            `;
+
+            // Update confidence bar
+            const confidenceDiv = card.querySelector('.expression-confidence');
+            confidenceDiv.innerHTML = `
+                <div class="confidence-bar" style="width: ${state.confidence * 100}%"></div>
+            `;
+
+            // Update explanation
+            const explanationDiv = card.querySelector('.expression-explanation');
+            explanationDiv.textContent = state.explanation || 'No explanation available';
+        });
     }
 }
 
