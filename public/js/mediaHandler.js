@@ -204,6 +204,9 @@ class MediaHandler {
                         console.log('Received transcript:', transcript);
                         console.log('Received emotion:', emotion);
 
+                        // Display transcription result
+                        document.getElementById('transcript').innerText = transcript;
+
                         // Process conversation state if conversation manager exists
                         if (RTMSState.conversationManager) {
                             const result = await RTMSState.conversationManager.processTranscript(transcript, emotion);
@@ -212,9 +215,6 @@ class MediaHandler {
                                 UIController.addSystemLog('Conversation', `State advanced to: ${result.newState}`);
                             }
                         }
-                        
-                        // Display transcription result
-                        document.getElementById('transcript').innerText = transcript;
 
                         // Send result via WebSocket if connected
                         if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN && transcript) {

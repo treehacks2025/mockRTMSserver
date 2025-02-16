@@ -11,6 +11,7 @@ const CredentialsManager = require('../utils/credentialsManager');
 const FormData = require('form-data');
 const OpenAI = require('openai');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { performance } = require('perf_hooks');
 
 const router = express.Router();
 
@@ -207,8 +208,11 @@ router.post('/transcribe', async (req, res) => {
 });
 
 router.post('/text-to-speech', async (req, res) => {
+    const startTime = performance.now();
     try {
         const { text, voiceId = "JBFqnCBsd6RMkjVDRZzb" } = req.body;
+        
+        console.log('TTS server processing started:', new Date().toISOString());
         
         if (!text) {
             throw new Error('Text is required');
@@ -223,13 +227,15 @@ router.post('/text-to-speech', async (req, res) => {
             },
             body: JSON.stringify({
                 text,
-                model_id: "eleven_multilingual_v2",
+                model_id: "eleven_flash_v2_5",
                 voice_settings: {
                     stability: 0.5,
                     similarity_boost: 0.5
                 }
             })
         });
+
+        console.log('ElevenLabs API call time:', performance.now() - startTime, 'ms');
 
         if (!response.ok) {
             const errorData = await response.text();
@@ -246,7 +252,9 @@ router.post('/text-to-speech', async (req, res) => {
         const filename = `speech_${timestamp}.mp3`;
         const filePath = path.join('/tmp', filename);
         
+        const writeStartTime = performance.now();
         fs.writeFileSync(filePath, Buffer.from(audioBuffer));
+        console.log('file write time:', performance.now() - writeStartTime, 'ms');
 
         // Send file as response
         res.setHeader('Content-Type', 'audio/mpeg');
@@ -268,6 +276,8 @@ router.post('/text-to-speech', async (req, res) => {
                 res.status(500).json({ error: 'File streaming error' });
             }
         });
+
+        console.log('TTS server total processing time:', performance.now() - startTime, 'ms');
 
     } catch (error) {
         console.error('Text-to-Speech Error:', error);
