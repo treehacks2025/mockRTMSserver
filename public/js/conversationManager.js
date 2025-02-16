@@ -1,6 +1,6 @@
 class ConversationManager {
     constructor() {
-        this.currentState = 'BREATHING_INTRO';
+        this.currentState = 'INITIAL';
         this.userSelections = {};  // Object to store user selections
         this.expressionStates = {
             furrowed: {
