@@ -198,11 +198,15 @@ class MediaHandler {
                         // Send to Groq API through APIHandler
                         const transcript = await APIHandler.transcribeAudio(audioFile);
 
+                        // Send to Gemini API through APIHandler
+                        const emotion = await APIHandler.analyzeEmotion(audioFile);
+
                         console.log('Received transcript:', transcript);
+                        console.log('Received emotion:', emotion);
 
                         // Process conversation state if conversation manager exists
                         if (RTMSState.conversationManager) {
-                            const result = await RTMSState.conversationManager.processTranscript(transcript);
+                            const result = await RTMSState.conversationManager.processTranscript(transcript, emotion);
                             if (result.success) {
                                 console.log('Conversation progressed:', result.newState);
                                 UIController.addSystemLog('Conversation', `State advanced to: ${result.newState}`);

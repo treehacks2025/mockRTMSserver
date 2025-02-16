@@ -226,17 +226,131 @@ class UIController {
         console.log("UI state reset completed");
     }
 
-    static handleEnd() {
+    static async handleEnd() {
         console.log("Ending meeting...");
         RTMSState.isStreamingEnabled = false;
         RTMSState.sessionState = CONFIG.STATES.STOPPED;
         
-        // Clear all stored meeting data
+        // show session analysis modal
+        const modal = document.getElementById('session-analysis-modal');
+        const loadingElement = modal.querySelector('.loading-container');
+        const contentElement = document.getElementById('analysis-content');
+        
+        modal.style.display = 'block';
+        loadingElement.style.display = 'flex';
+        contentElement.style.display = 'none';
+        
+        try {
+            // use ConversationManager's analyzeSession
+            const result = await RTMSState.conversationManager.analyzeSession();
+            
+            if (result.success) {
+                const { analysis } = result;
+                
+                // update text content
+                document.getElementById('emotional-journey').textContent = analysis.emotionalJourney;
+                document.getElementById('relaxation-level').textContent = analysis.relaxationLevel;
+                
+                // update lists
+                document.getElementById('key-moments').innerHTML = 
+                    analysis.keyMoments.map(moment => `<li>${moment}</li>`).join('');
+                document.getElementById('recommendations').innerHTML = 
+                    analysis.recommendations.map(rec => `<li>${rec}</li>`).join('');
+
+                // create expression analysis charts
+                const chartTypes = ['furrowed', 'smiling', 'relaxed', 'eyesClosed', 'eyesFocused'];
+                
+                chartTypes.forEach(type => {
+                    const chartContainer = document.getElementById(`analysis-${type}-chart`);
+                    const canvas = chartContainer.querySelector('canvas');
+                    const ctx = canvas.getContext('2d');
+
+                    // if existing chart exists, destroy it
+                    if (chartContainer.chart) {
+                        chartContainer.chart.destroy();
+                    }
+
+                    // sort data by timestamp
+                    const expressionData = RTMSState.conversationManager.expressionHistory[type] || [];
+                    const sortedData = [...expressionData].sort((a, b) => a.timestamp - b.timestamp);
+
+                    // create new chart
+                    chartContainer.chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            datasets: [{
+                                label: `${type.charAt(0).toUpperCase() + type.slice(1)} Detection`,
+                                data: sortedData.map(d => ({
+                                    x: d.timestamp,
+                                    y: d.matches ? 1 : 0
+                                })),
+                                borderColor: '#2d8cff',
+                                backgroundColor: 'rgba(45, 140, 255, 0.1)',
+                                stepped: true,
+                                tension: 0
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        unit: 'second'
+                                    },
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.1)'
+                                    },
+                                    ticks: {
+                                        color: '#ffffff'
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    max: 1,
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.1)'
+                                    },
+                                    ticks: {
+                                        color: '#ffffff',
+                                        stepSize: 1,
+                                        callback: function(value) {
+                                            return value === 1 ? 'True' : 'False';
+                                        }
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    labels: {
+                                        color: '#ffffff'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                });
+
+                // hide loading and show content
+                loadingElement.style.display = 'none';
+                contentElement.style.display = 'block';
+            } else {
+                throw new Error('Session analysis failed');
+            }
+        } catch (error) {
+            console.error('Session analysis error:', error);
+            this.showError('Session analysis failed');
+            modal.style.display = 'none';
+        }
+
+        // clear meeting data
         localStorage.removeItem('currentMeetingId');
         window.currentMeetingId = null;
-        window.lastWebhookPayload = null; // Clear the stored webhook payload
+        window.lastWebhookPayload = null;
 
-        // Stop all recordings and streams
+        // stop recordings and streams
         MediaHandler.cleanup();
 
         if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN) {
@@ -244,18 +358,18 @@ class UIController {
             RTMSState.mediaSocket.close();
         }
 
-        // Reset all state
+        // reset all states
         RTMSState.mediaSocket = null;
         RTMSState.mediaStream = null;
         RTMSState.videoRecorder = null;
         RTMSState.audioRecorder = null;
 
-        // Reset UI completely
+        // reset UI completely
         this.resetUIState();
         
-        // Clear logs and transcripts
+        // clear logs and transcripts
         document.getElementById('transcript').innerHTML = '';
-        document.getElementById('response').innerHTML = '';
+        document.getElementById('system-logs').innerHTML = '';
     }
 
     static handleIncomingMedia(message) {
@@ -588,7 +702,7 @@ class UIController {
             const canvas = chartContainer.querySelector('canvas');
             const ctx = canvas.getContext('2d');
 
-            // データを時系列でソート
+            // Sort data by timestamp
             const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
 
             // Create or update chart
@@ -600,11 +714,11 @@ class UIController {
                             label: `${expression} Detection`,
                             data: sortedData.map(d => ({
                                 x: d.timestamp,
-                                // matchesをbooleanから数値に変換
+                                // Convert matches from boolean to number
                                 y: d.matches ? 1 : 0
                             })),
                             borderColor: '#2d8cff',
-                            // ステップ状のラインにする
+                            // Make the line stepped
                             stepped: true,
                             tension: 0
                         }]
@@ -638,10 +752,10 @@ class UIController {
         const modalDashboard = document.getElementById('modal-dashboard');
         const closeBtn = modal.querySelector('.modal-close');
 
-        // モーダルを表示
+        // Show modal
         modal.style.display = 'block';
 
-        // グラフをモーダルにコピー
+        // Copy graphs to modal
         modalDashboard.innerHTML = '';
         Object.entries(RTMSState.conversationManager.expressionHistory).forEach(([expression, data]) => {
             const chartContainer = document.createElement('div');
@@ -657,7 +771,7 @@ class UIController {
             chartContainer.appendChild(canvas);
             modalDashboard.appendChild(chartContainer);
 
-            // データを時系列でソート
+            // Sort data by timestamp
             const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
 
             const ctx = canvas.getContext('2d');
@@ -705,12 +819,12 @@ class UIController {
             });
         });
 
-        // クローズボタンのイベントリスナー
+        // Close button event listener
         closeBtn.onclick = () => {
             modal.style.display = 'none';
         };
 
-        // モーダル外クリックで閉じる
+        // Modal outside click to close
         modal.onclick = (e) => {
             if (e.target === modal) {
                 modal.style.display = 'none';
