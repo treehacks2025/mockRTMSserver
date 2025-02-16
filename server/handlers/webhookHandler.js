@@ -10,6 +10,7 @@ const fetch = require('node-fetch');
 const CredentialsManager = require('../utils/credentialsManager');
 const FormData = require('form-data');
 const OpenAI = require('openai');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const router = express.Router();
 
@@ -19,6 +20,12 @@ router.use(express.json());
 
 // Add middleware for audio/wav files
 router.use('/transcribe', express.raw({ 
+    type: 'audio/wav',
+    limit: '10mb'
+}));
+
+// Add middleware for audio/wav files
+router.use('/analyze-emotion', express.raw({ 
     type: 'audio/wav',
     limit: '10mb'
 }));
@@ -319,6 +326,137 @@ router.post('/analyze-expression', async (req, res) => {
 
     } catch (error) {
         console.error('Expression Analysis Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.cause ? error.cause.message : 'No additional details'
+        });
+    }
+});
+
+router.post('/analyze-emotion', async (req, res) => {
+    try {
+        if (!req.body || !Buffer.isBuffer(req.body)) {
+            throw new Error('Invalid audio data received');
+        }
+
+        // Save audio data to temporary file
+        const tempFilePath = '/tmp/audio_analysis.wav';
+        fs.writeFileSync(tempFilePath, req.body);
+
+        // Initialize Gemini AI
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+        // Convert audio to base64
+        const audioData = {
+            inlineData: {
+                data: Buffer.from(fs.readFileSync(tempFilePath)).toString("base64"),
+                mimeType: "audio/wav"
+            },
+        };
+
+        const prompt = "Analyze the emotions of the person speaking from the given audio. I will use this analysis to understand how much stress the user is experiencing, so please focus on that aspect and summarize your findings.";
+
+        // Generate content
+        const result = await model.generateContent([prompt, audioData]);
+        const response = await result.response;
+
+        // Clean up temporary file
+        fs.unlinkSync(tempFilePath);
+
+        res.json({
+            success: true,
+            analysis: response.text(),
+        });
+
+    } catch (error) {
+        console.error('Emotion Analysis Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: error.cause ? error.cause.message : 'No additional details'
+        });
+    }
+});
+
+router.post('/analyze-session', async (req, res) => {
+    try {
+        const { emotionHistory, expressionHistory } = req.body;
+
+        if (!emotionHistory || !expressionHistory) {
+            throw new Error('Both emotion and expression history are required');
+        }
+
+        const openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY
+        });
+
+        // Organize timeline data
+        const timelineData = {
+            emotions: emotionHistory.map(entry => ({
+                timestamp: new Date(entry.timestamp).toISOString(),
+                emotion: entry.emotion
+            })),
+            expressions: Object.entries(expressionHistory).map(([type, data]) => ({
+                type,
+                data: data.map(entry => ({
+                    timestamp: new Date(entry.timestamp).toISOString(),
+                    matches: entry.matches,
+                    confidence: entry.confidence,
+                    explanation: entry.explanation
+                }))
+            }))
+        };
+
+        const prompt = `
+Please analyze the meditation session data provided below. The data includes emotional states and facial expressions tracked throughout the session.
+
+Emotion History:
+${JSON.stringify(timelineData.emotions, null, 2)}
+
+Expression History:
+${JSON.stringify(timelineData.expressions, null, 2)}
+
+Focus your analysis on:
+1. Overall emotional journey throughout the session
+2. Progression of relaxation states
+3. Key moments or significant changes
+4. Recommendations for improvement
+
+Please provide your analysis in the following JSON format:
+{
+    "emotionalJourney": "Summary of emotional changes",
+    "relaxationLevel": "Analysis of relaxation progression",
+    "keyMoments": ["List of significant moments"],
+    "recommendations": ["List of improvement suggestions"]
+}`;
+
+        const response = await openai.chat.completions.create({
+            model: "o3-mini",
+            messages: [
+                {
+                    role: "system",
+                    content: "You are an AI meditation session analyst specializing in emotional and facial expression analysis."
+                },
+                {
+                    role: "user",
+                    content: prompt
+                }
+            ],
+            response_format: { type: "json_object" },
+        });
+
+        const analysis = JSON.parse(response.choices[0].message.content);
+        console.log('analysis', analysis);
+
+        res.json({
+            success: true,
+            analysis
+        });
+
+    } catch (error) {
+        console.error('Session Analysis Error:', error);
         res.status(500).json({
             success: false,
             error: error.message,

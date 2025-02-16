@@ -2,6 +2,7 @@ class ConversationManager {
     constructor() {
         this.currentState = 'INITIAL';
         this.userSelections = {};  // Object to store user selections
+        this.emotionHistory = []; // Add emotion history array
         this.expressionStates = {
             furrowed: {
                 matches: false,
@@ -237,6 +238,13 @@ class ConversationManager {
     async analyzeExpression(query) {
         try {
             const videoElement = document.getElementById('mediaVideo');
+            
+            // Check if video element exists and is ready
+            if (!videoElement || !videoElement.videoWidth || !videoElement.videoHeight) {
+                console.warn('Video element is not ready or does not exist');
+                return { matches: false, confidence: 0, explanation: 'Video feed not available' };
+            }
+
             const canvas = document.createElement('canvas');
             canvas.width = videoElement.videoWidth;
             canvas.height = videoElement.videoHeight;
@@ -370,7 +378,13 @@ class ConversationManager {
         }
     }
 
-    async processTranscript(transcript) {
+    async processTranscript(transcript, emotion) {
+        // Store emotion with timestamp
+        this.emotionHistory.push({
+            emotion: emotion,
+            timestamp: Date.now()
+        });
+
         const currentStateData = this.states[this.currentState];
         // continue with the existing trigger-based processing
         const normalizedTranscript = transcript.toLowerCase();
@@ -420,5 +434,29 @@ class ConversationManager {
     // New method to get user selections
     getSelection(key) {
         return this.userSelections[key];
+    }
+
+    async analyzeSession() {
+        try {
+            const response = await fetch('/api/analyze-session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    emotionHistory: this.emotionHistory,
+                    expressionHistory: this.expressionHistory
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Session analysis failed');
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Session Analysis Error:', error);
+            throw error;
+        }
     }
 }
