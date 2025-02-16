@@ -748,7 +748,7 @@ button:hover:not(:disabled) {
     gap: 15px;
 }
 
-.meeting-duration {
+.ritual-duration {
     font-size: 1.2em;
     font-weight: 500;
     color: #2d8cff;
