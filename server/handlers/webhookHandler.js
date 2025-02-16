@@ -287,7 +287,7 @@ router.post('/analyze-expression', async (req, res) => {
             messages: [
                 {
                     role: "system",
-                    content: "You are an expression analyzer. Analyze the facial expression in the image and respond with a JSON object containing whether the expression matches the query and provide explanation. Response should be in format: {matches: boolean, confidence: number, explanation: string}"
+                    content: "You are an expression analyzer. Analyze the facial expression in the image and respond with a JSON object containing whether the expression matches the query and provide explanation. For confidence, use a scale of 0 to 1 where 1 means complete confidence in a match and 0 means complete confidence in no match. Response should be in format: {matches: boolean, confidence: number, explanation: string}"
                 },
                 {
                     role: "user",

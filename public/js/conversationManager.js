@@ -1,6 +1,6 @@
 class ConversationManager {
     constructor() {
-        this.currentState = 'EXPRESSION_CHECK';
+        this.currentState = 'INITIAL';
         this.userSelections = {};  // Object to store user selections
         this.expressionStates = {
             furrowed: {
@@ -97,40 +97,70 @@ class ConversationManager {
                 Feel free to adjust this practice
                 to make this time truly
                 your own.`,
-                duration: 10000, // 10 seconds
+                duration: 3000, // 3 seconds
                 nextState: 'BREATHING_INTRO'
             },
             BREATHING_INTRO: {
                 script: `As you settle in,
                 take a slow, deliberate breath
                 if that feels comfortable.`,
-                duration: 5000,
-                nextState: 'EXPRESSION_CHECK'
-            },
-            EXPRESSION_CHECK: {
-                script: `Let's take a moment to check your expression.
-                I want to make sure you're feeling relaxed.`,
                 duration: 3000,
-                checkExpression: true,
-                expressionQuery: 'signs of furrowed brow or tension between eyebrows',
+                nextState: 'FACIAL_RELAXATION_CHECK'
+            },
+            FACIAL_RELAXATION_CHECK: {
+                script: `Feel free to close your eyes at any time
+                or let your gaze rest softly downward
+                toward your tea.`,
+                duration: 3000,
+                checkExpression: {
+                    operator: 'AND',
+                    conditions: ['relaxed', '!furrowed']
+                },
                 outcomes: {
-                    false: 'NEXT_BREATHING',
-                    true: 'EXPRESSION_RECHECK'
+                    false: 'FACIAL_RELAXATION_GUIDANCE',
+                    true: 'RELAX_FACE'
                 }
             },
-            EXPRESSION_RECHECK: {
-                script: `I notice you might be feeling tense.
-                Let's take another moment to relax.
-                Release any tension in your face,
-                especially around your eyebrows.
-                Take another deep breath.`,
-                duration: 5000,
-                checkExpression: true,
-                expressionQuery: 'signs of facial tension, particularly around the forehead and eyebrows, or any stress indicators in facial muscles',
+            FACIAL_RELAXATION_GUIDANCE: {
+                script: `I notice some tension in your face.
+                Let's take a moment to release that tension.
+                Gently bring your attention to your facial muscles.
+                Notice any areas that might be holding tension.`,
+                duration: 3000,
+                nextState: 'RELAX_FACE'
+            },
+            RELAX_FACE: {
+                script: `Soften the space between your eyebrows.
+                Relax your jaw by gently unclenching it.
+                Unpurse your lips.`,
+                duration: 3000,
+                checkExpression: {
+                    operator: 'OR',
+                    conditions: ['relaxed', 'smiling']
+                },
                 outcomes: {
-                    false: 'NEXT_BREATHING',
-                    true: 'NEXT_BREATHING'
+                    false: 'ADDITIONAL_RELAXATION',
+                    true: 'POSTURE_CHECK'
                 }
+            },
+            ADDITIONAL_RELAXATION: {
+                script: `Let's try that again.
+                Take a deep breath in through your nose,
+                and as you exhale through your mouth,
+                feel the tension melting away from your face.
+                
+                Let your facial muscles become soft and relaxed.`,
+                duration: 4000,
+                nextState: 'POSTURE_CHECK'
+            },
+            POSTURE_CHECK: {
+                script: `On your next inhale,
+                you might like to elongate your spine
+                up toward the sky,
+                sitting in a way that feels both relaxed
+                and alert.`,
+                duration: 3000,
+                nextState: 'NEXT_BREATHING'
             },
             NEXT_BREATHING: {
                 script: `Very good.
@@ -265,7 +295,7 @@ class ConversationManager {
                         let nextState;
                         
                         if (currentStateData.checkExpression) {
-                            const expressionResult = await this.checkFrownExpression();
+                            const expressionResult = await this.checkExpression(currentStateData.checkExpression);
                             console.log('expressionResult', expressionResult);
                             nextState = currentStateData.outcomes[expressionResult.matches];
                         } else {
@@ -289,8 +319,55 @@ class ConversationManager {
         }
     }
 
-    async checkFrownExpression() {
-        return this.expressionStates.furrowed;
+    async checkExpression(expressionConfig) {
+        // If it's a string, convert to default AND configuration
+        if (typeof expressionConfig === 'string') {
+            expressionConfig = {
+                operator: 'AND',
+                conditions: [expressionConfig]
+            };
+        }
+
+        const { operator, conditions } = expressionConfig;
+        const results = await Promise.all(conditions.map(async (condition) => {
+            const isNegated = condition.startsWith('!');
+            const expressionType = isNegated ? condition.slice(1) : condition;
+            
+            const expressionState = this.expressionStates[expressionType];
+            if (!expressionState) {
+                console.error(`Unknown expression type: ${expressionType}`);
+                return false;
+            }
+
+            return isNegated ? !expressionState.matches : expressionState.matches;
+        }));
+
+        // Evaluate results based on operator
+        switch (operator.toUpperCase()) {
+            case 'AND':
+                return {
+                    matches: results.every(result => result),
+                    confidence: Math.min(...results.map(r => r ? 1 : 0))
+                };
+            case 'OR':
+                return {
+                    matches: results.some(result => result),
+                    confidence: Math.max(...results.map(r => r ? 1 : 0))
+                };
+            case 'NOR':
+                return {
+                    matches: !results.some(result => result),
+                    confidence: Math.max(...results.map(r => !r ? 1 : 0))
+                };
+            case 'NAND':
+                return {
+                    matches: !results.every(result => result),
+                    confidence: Math.min(...results.map(r => !r ? 1 : 0))
+                };
+            default:
+                console.error(`Unknown operator: ${operator}`);
+                return { matches: false, confidence: 0 };
+        }
     }
 
     async processTranscript(transcript) {
