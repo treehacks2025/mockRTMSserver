@@ -55,6 +55,7 @@
                     <button class="tab-button active" data-tab="transcripts">Transcripts</button>
                     <button class="tab-button" data-tab="logs">Logs</button>
                     <button class="tab-button" data-tab="expressions">Expressions</button>
+                    <button class="tab-button" data-tab="dashboard">Dashboard</button>
                 </div>
 
                 <div id="transcripts-container" class="logs-container">
@@ -82,7 +83,7 @@
                             <div class="expression-explanation"></div>
                         </div>
                         <div class="expression-card" id="relaxed-state">
-                            <div class="expression-icon"><i class="fas fa-face-smile-relaxed"></i></div>
+                            <div class="expression-icon"><i class="fas fa-face-smile"></i></div>
                             <div class="expression-title">Relaxed</div>
                             <div class="expression-status"></div>
                             <div class="expression-confidence"></div>
@@ -107,8 +108,43 @@
             </div>
         </div>
 
+        <div id="dashboard-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Expression Analysis Dashboard</h2>
+                    <button class="modal-close"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div id="modal-dashboard">
+                        <div class="chart-container" id="furrowed-chart">
+                            <h3>Furrowed Brow Timeline</h3>
+                            <canvas></canvas>
+                        </div>
+                        <div class="chart-container" id="smiling-chart">
+                            <h3>Smiling Timeline</h3>
+                            <canvas></canvas>
+                        </div>
+                        <div class="chart-container" id="relaxed-chart">
+                            <h3>Relaxed Timeline</h3>
+                            <canvas></canvas>
+                        </div>
+                        <div class="chart-container" id="eyesClosed-chart">
+                            <h3>Eyes Closed Timeline</h3>
+                            <canvas></canvas>
+                        </div>
+                        <div class="chart-container" id="eyesFocused-chart">
+                            <h3>Eyes Focused Timeline</h3>
+                            <canvas></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.22/dist/bundle.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 
         <!-- Configuration -->
         <script src="/js/config.js"></script>
@@ -133,12 +169,16 @@
             // Handle tabs
             document.querySelectorAll('.tab-button').forEach(button => {
                 button.addEventListener('click', () => {
-                    // Update active tab
+                    const tabName = button.dataset.tab;
+                    
+                    if (tabName === 'dashboard') {
+                        document.getElementById('dashboard-modal').style.display = 'block';
+                        return;
+                    }
+
                     document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
                     button.classList.add('active');
 
-                    // Show/hide containers
-                    const tabName = button.dataset.tab;
                     document.getElementById('transcripts-container').style.display = 
                         tabName === 'transcripts' ? 'block' : 'none';
                     document.getElementById('logs-container').style.display = 
@@ -146,6 +186,21 @@
                     document.getElementById('expressions-container').style.display = 
                         tabName === 'expressions' ? 'block' : 'none';
                 });
+            });
+
+            // モーダルを閉じる処理を追加
+            document.querySelector('.modal-close').addEventListener('click', () => {
+                document.getElementById('dashboard-modal').style.display = 'none';
+                // ダッシュボードタブの選択を解除
+                document.querySelector('[data-tab="dashboard"]').classList.remove('active');
+            });
+
+            // モーダル外クリックで閉じる
+            document.getElementById('dashboard-modal').addEventListener('click', (e) => {
+                if (e.target === document.getElementById('dashboard-modal')) {
+                    document.getElementById('dashboard-modal').style.display = 'none';
+                    document.querySelector('[data-tab="dashboard"]').classList.remove('active');
+                }
             });
 
             // Function to add transcript

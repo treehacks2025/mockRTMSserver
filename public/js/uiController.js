@@ -34,6 +34,29 @@ class UIController {
             document.getElementById('sendBtn').disabled = true;
             window.validatedWebhookUrl = null;
         });
+
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const tabName = button.dataset.tab;
+                
+                // ダッシュボードタブの場合、モーダルを表示
+                if (tabName === 'dashboard') {
+                    UIController.showDashboardModal();
+                    return;
+                }
+
+                // その他のタブの処理
+                document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+
+                document.getElementById('transcripts-container').style.display = 
+                    tabName === 'transcripts' ? 'block' : 'none';
+                document.getElementById('logs-container').style.display = 
+                    tabName === 'logs' ? 'block' : 'none';
+                document.getElementById('expressions-container').style.display = 
+                    tabName === 'expressions' ? 'block' : 'none';
+            });
+        });
     }
 
     static updateButtonStates(isActive) {
@@ -518,6 +541,181 @@ class UIController {
             const explanationDiv = card.querySelector('.expression-explanation');
             explanationDiv.textContent = state.explanation || 'No explanation available';
         });
+    }
+
+    static updateExpressionDashboard(expressionHistory) {
+        const chartOptions = {
+            type: 'line',
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'second'
+                        },
+                        ticks: {
+                            color: '#ffffff'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: 1,
+                        ticks: {
+                            color: '#ffffff',
+                            stepSize: 1,
+                            callback: function(value) {
+                                return value === 1 ? 'True' : 'False';
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#ffffff'
+                        }
+                    }
+                }
+            }
+        };
+
+        Object.entries(expressionHistory).forEach(([expression, data]) => {
+            const chartContainer = document.getElementById(`${expression}-chart`);
+            if (!chartContainer) return;
+
+            const canvas = chartContainer.querySelector('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // データを時系列でソート
+            const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
+
+            // Create or update chart
+            if (!chartContainer.chart) {
+                chartContainer.chart = new Chart(ctx, {
+                    ...chartOptions,
+                    data: {
+                        datasets: [{
+                            label: `${expression} Detection`,
+                            data: sortedData.map(d => ({
+                                x: d.timestamp,
+                                // matchesをbooleanから数値に変換
+                                y: d.matches ? 1 : 0
+                            })),
+                            borderColor: '#2d8cff',
+                            // ステップ状のラインにする
+                            stepped: true,
+                            tension: 0
+                        }]
+                    }
+                });
+
+                // Add fullscreen button
+                const fullscreenBtn = document.createElement('button');
+                fullscreenBtn.className = 'fullscreen-button';
+                fullscreenBtn.innerHTML = '<i class="fas fa-expand"></i>';
+                fullscreenBtn.onclick = () => {
+                    chartContainer.classList.toggle('fullscreen');
+                    fullscreenBtn.innerHTML = chartContainer.classList.contains('fullscreen') ?
+                        '<i class="fas fa-compress"></i>' : '<i class="fas fa-expand"></i>';
+                    chartContainer.chart.resize();
+                };
+                chartContainer.appendChild(fullscreenBtn);
+            } else {
+                // Update existing chart
+                chartContainer.chart.data.datasets[0].data = sortedData.map(d => ({
+                    x: d.timestamp,
+                    y: d.matches ? 1 : 0
+                }));
+                chartContainer.chart.update();
+            }
+        });
+    }
+
+    static showDashboardModal() {
+        const modal = document.getElementById('dashboard-modal');
+        const modalDashboard = document.getElementById('modal-dashboard');
+        const closeBtn = modal.querySelector('.modal-close');
+
+        // モーダルを表示
+        modal.style.display = 'block';
+
+        // グラフをモーダルにコピー
+        modalDashboard.innerHTML = '';
+        Object.entries(RTMSState.conversationManager.expressionHistory).forEach(([expression, data]) => {
+            const chartContainer = document.createElement('div');
+            chartContainer.className = 'chart-container';
+            chartContainer.id = `modal-${expression}-chart`;
+            
+            const title = document.createElement('h3');
+            title.textContent = `${expression.charAt(0).toUpperCase() + expression.slice(1)} Timeline`;
+            
+            const canvas = document.createElement('canvas');
+            
+            chartContainer.appendChild(title);
+            chartContainer.appendChild(canvas);
+            modalDashboard.appendChild(chartContainer);
+
+            // データを時系列でソート
+            const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
+
+            const ctx = canvas.getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: `${expression} Detection`,
+                        data: sortedData.map(d => ({
+                            x: d.timestamp,
+                            y: d.matches ? 1 : 0
+                        })),
+                        borderColor: '#2d8cff',
+                        stepped: true,
+                        tension: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'second' },
+                            ticks: { color: '#ffffff' }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 1,
+                            ticks: { 
+                                color: '#ffffff',
+                                stepSize: 1,
+                                callback: function(value) {
+                                    return value === 1 ? 'True' : 'False';
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#ffffff' }
+                        }
+                    }
+                }
+            });
+        });
+
+        // クローズボタンのイベントリスナー
+        closeBtn.onclick = () => {
+            modal.style.display = 'none';
+        };
+
+        // モーダル外クリックで閉じる
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
     }
 }
 
