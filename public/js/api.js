@@ -74,6 +74,7 @@ class APIHandler {
             UIController.addSignalingLog('Meeting Start Success', {
                 server_urls: payload.sent.payload.payload.object.server_urls
             });
+            UIController.startMeetingTimer(); // start timer
             await MediaHandler.startMediaStream(payload.sent.payload.payload.object.server_urls);
         } else {
             UIController.addSignalingLog('Meeting Start Failed', payload);

@@ -227,6 +227,9 @@ class UIController {
     }
 
     static async handleEnd() {
+        this.stopMeetingTimer(); // stop timer
+        this.updateMeetingDuration(); // update meeting duration
+        
         console.log("Ending meeting...");
         RTMSState.isStreamingEnabled = false;
         RTMSState.sessionState = CONFIG.STATES.STOPPED;
@@ -263,6 +266,10 @@ class UIController {
                 chartTypes.forEach(type => {
                     const chartContainer = document.getElementById(`analysis-${type}-chart`);
                     const canvas = chartContainer.querySelector('canvas');
+                    
+                    // Set fixed height for better visualization
+                    canvas.style.height = '200px';  // fixed height
+                    
                     const ctx = canvas.getContext('2d');
 
                     // if existing chart exists, destroy it
@@ -287,23 +294,36 @@ class UIController {
                                 borderColor: '#2d8cff',
                                 backgroundColor: 'rgba(45, 140, 255, 0.1)',
                                 stepped: true,
-                                tension: 0
+                                tension: 0,
+                                borderWidth: 2  // adjust line width
                             }]
                         },
                         options: {
                             responsive: true,
-                            maintainAspectRatio: false,
+                            maintainAspectRatio: false,  // don't fix aspect ratio
+                            layout: {
+                                padding: {
+                                    top: 10,
+                                    right: 20,
+                                    bottom: 10,
+                                    left: 20
+                                }
+                            },
                             scales: {
                                 x: {
                                     type: 'time',
                                     time: {
-                                        unit: 'second'
+                                        unit: 'second',
+                                        displayFormats: {
+                                            second: 'mm:ss'
+                                        }
                                     },
                                     grid: {
                                         color: 'rgba(255, 255, 255, 0.1)'
                                     },
                                     ticks: {
-                                        color: '#ffffff'
+                                        color: '#ffffff',
+                                        maxRotation: 0  // prevent label rotation
                                     }
                                 },
                                 y: {
@@ -315,6 +335,7 @@ class UIController {
                                     ticks: {
                                         color: '#ffffff',
                                         stepSize: 1,
+                                        padding: 10,  // add tick padding
                                         callback: function(value) {
                                             return value === 1 ? 'True' : 'False';
                                         }
@@ -325,9 +346,13 @@ class UIController {
                                 legend: {
                                     display: true,
                                     labels: {
-                                        color: '#ffffff'
+                                        color: '#ffffff',
+                                        padding: 20  // add legend padding
                                     }
                                 }
+                            },
+                            animation: {
+                                duration: 500  // set animation duration
                             }
                         }
                     });
@@ -830,6 +855,76 @@ class UIController {
                 modal.style.display = 'none';
             }
         };
+    }
+
+    static meetingStartTime = null;
+    static timerInterval = null;
+    static MEETING_DURATION = 180; // 3 minutes = 180 seconds
+
+    static startMeetingTimer() {
+        this.meetingStartTime = Date.now();
+        this.updateTimer();
+        
+        this.timerInterval = setInterval(() => {
+            this.updateTimer();
+        }, 1000);
+    }
+
+    static updateTimer() {
+        const elapsedSeconds = Math.floor((Date.now() - this.meetingStartTime) / 1000);
+        const remainingSeconds = Math.max(0, this.MEETING_DURATION - elapsedSeconds);
+        
+        // update remaining time display
+        const minutes = Math.floor(remainingSeconds / 60);
+        const seconds = remainingSeconds % 60;
+        const timeDisplay = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        document.getElementById('remainingTime').textContent = timeDisplay;
+
+        // if time is up
+        if (remainingSeconds === 0) {
+            this.stopMeetingTimer();
+            
+            // show session analysis modal
+            const modal = document.getElementById('session-analysis-modal');
+            if (modal) {
+                modal.style.display = 'block';
+                
+                // show loading
+                const loadingContainer = modal.querySelector('.loading-container');
+                if (loadingContainer) {
+                    loadingContainer.style.display = 'block';
+                }
+                
+                // generate analysis content
+                if (RTMSState.conversationManager) {
+                    RTMSState.conversationManager.generateAnalysis().then(() => {
+                        if (loadingContainer) {
+                            loadingContainer.style.display = 'none';
+                        }
+                    });
+                }
+            }
+
+            // end meeting
+            this.handleEnd();
+        }
+    }
+
+    static stopMeetingTimer() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+    }
+
+    static updateMeetingDuration() {
+        if (!this.meetingStartTime) return;
+        
+        const elapsedSeconds = Math.floor((Date.now() - this.meetingStartTime) / 1000);
+        const minutes = Math.floor(elapsedSeconds / 60);
+        const seconds = elapsedSeconds % 60;
+        const durationDisplay = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        document.getElementById('meetingDuration').textContent = durationDisplay;
     }
 }
 
