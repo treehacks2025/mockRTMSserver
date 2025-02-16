@@ -34,6 +34,29 @@ class UIController {
             document.getElementById('sendBtn').disabled = true;
             window.validatedWebhookUrl = null;
         });
+
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const tabName = button.dataset.tab;
+                
+                // ダッシュボードタブの場合、モーダルを表示
+                if (tabName === 'dashboard') {
+                    UIController.showDashboardModal();
+                    return;
+                }
+
+                // その他のタブの処理
+                document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+
+                document.getElementById('transcripts-container').style.display = 
+                    tabName === 'transcripts' ? 'block' : 'none';
+                document.getElementById('logs-container').style.display = 
+                    tabName === 'logs' ? 'block' : 'none';
+                document.getElementById('expressions-container').style.display = 
+                    tabName === 'expressions' ? 'block' : 'none';
+            });
+        });
     }
 
     static updateButtonStates(isActive) {
@@ -203,17 +226,156 @@ class UIController {
         console.log("UI state reset completed");
     }
 
-    static handleEnd() {
+    static async handleEnd() {
+        this.stopMeetingTimer(); // stop timer
+        this.updateMeetingDuration(); // update meeting duration
+        
         console.log("Ending meeting...");
         RTMSState.isStreamingEnabled = false;
         RTMSState.sessionState = CONFIG.STATES.STOPPED;
         
-        // Clear all stored meeting data
+        // show session analysis modal
+        const modal = document.getElementById('session-analysis-modal');
+        const loadingElement = modal.querySelector('.loading-container');
+        const contentElement = document.getElementById('analysis-content');
+        
+        modal.style.display = 'block';
+        loadingElement.style.display = 'flex';
+        contentElement.style.display = 'none';
+        
+        try {
+            // use ConversationManager's analyzeSession
+            const result = await RTMSState.conversationManager.analyzeSession();
+            
+            if (result.success) {
+                const { analysis } = result;
+                
+                // update text content
+                document.getElementById('emotional-journey').textContent = analysis.emotionalJourney;
+                document.getElementById('relaxation-level').textContent = analysis.relaxationLevel;
+                
+                // update lists
+                document.getElementById('key-moments').innerHTML = 
+                    analysis.keyMoments.map(moment => `<li>${moment}</li>`).join('');
+                document.getElementById('recommendations').innerHTML = 
+                    analysis.recommendations.map(rec => `<li>${rec}</li>`).join('');
+
+                // create expression analysis charts
+                const chartTypes = ['furrowed', 'smiling', 'relaxed', 'eyesClosed', 'eyesFocused'];
+                
+                chartTypes.forEach(type => {
+                    const chartContainer = document.getElementById(`analysis-${type}-chart`);
+                    const canvas = chartContainer.querySelector('canvas');
+                    
+                    // Set fixed height for better visualization
+                    canvas.style.height = '200px';  // fixed height
+                    
+                    const ctx = canvas.getContext('2d');
+
+                    // if existing chart exists, destroy it
+                    if (chartContainer.chart) {
+                        chartContainer.chart.destroy();
+                    }
+
+                    // sort data by timestamp
+                    const expressionData = RTMSState.conversationManager.expressionHistory[type] || [];
+                    const sortedData = [...expressionData].sort((a, b) => a.timestamp - b.timestamp);
+
+                    // create new chart
+                    chartContainer.chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            datasets: [{
+                                label: `${type.charAt(0).toUpperCase() + type.slice(1)} Detection`,
+                                data: sortedData.map(d => ({
+                                    x: d.timestamp,
+                                    y: d.matches ? 1 : 0
+                                })),
+                                borderColor: '#2d8cff',
+                                backgroundColor: 'rgba(45, 140, 255, 0.1)',
+                                stepped: true,
+                                tension: 0,
+                                borderWidth: 2  // adjust line width
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,  // don't fix aspect ratio
+                            layout: {
+                                padding: {
+                                    top: 10,
+                                    right: 20,
+                                    bottom: 10,
+                                    left: 20
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        unit: 'second',
+                                        displayFormats: {
+                                            second: 'mm:ss'
+                                        }
+                                    },
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.1)'
+                                    },
+                                    ticks: {
+                                        color: '#ffffff',
+                                        maxRotation: 0  // prevent label rotation
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    max: 1,
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.1)'
+                                    },
+                                    ticks: {
+                                        color: '#ffffff',
+                                        stepSize: 1,
+                                        padding: 10,  // add tick padding
+                                        callback: function(value) {
+                                            return value === 1 ? 'True' : 'False';
+                                        }
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    labels: {
+                                        color: '#ffffff',
+                                        padding: 20  // add legend padding
+                                    }
+                                }
+                            },
+                            animation: {
+                                duration: 500  // set animation duration
+                            }
+                        }
+                    });
+                });
+
+                // hide loading and show content
+                loadingElement.style.display = 'none';
+                contentElement.style.display = 'block';
+            } else {
+                throw new Error('Session analysis failed');
+            }
+        } catch (error) {
+            console.error('Session analysis error:', error);
+            this.showError('Session analysis failed');
+            modal.style.display = 'none';
+        }
+
+        // clear meeting data
         localStorage.removeItem('currentMeetingId');
         window.currentMeetingId = null;
-        window.lastWebhookPayload = null; // Clear the stored webhook payload
+        window.lastWebhookPayload = null;
 
-        // Stop all recordings and streams
+        // stop recordings and streams
         MediaHandler.cleanup();
 
         if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN) {
@@ -221,18 +383,18 @@ class UIController {
             RTMSState.mediaSocket.close();
         }
 
-        // Reset all state
+        // reset all states
         RTMSState.mediaSocket = null;
         RTMSState.mediaStream = null;
         RTMSState.videoRecorder = null;
         RTMSState.audioRecorder = null;
 
-        // Reset UI completely
+        // reset UI completely
         this.resetUIState();
         
-        // Clear logs and transcripts
+        // clear logs and transcripts
         document.getElementById('transcript').innerHTML = '';
-        document.getElementById('response').innerHTML = '';
+        document.getElementById('system-logs').innerHTML = '';
     }
 
     static handleIncomingMedia(message) {
@@ -518,6 +680,251 @@ class UIController {
             const explanationDiv = card.querySelector('.expression-explanation');
             explanationDiv.textContent = state.explanation || 'No explanation available';
         });
+    }
+
+    static updateExpressionDashboard(expressionHistory) {
+        const chartOptions = {
+            type: 'line',
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'second'
+                        },
+                        ticks: {
+                            color: '#ffffff'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: 1,
+                        ticks: {
+                            color: '#ffffff',
+                            stepSize: 1,
+                            callback: function(value) {
+                                return value === 1 ? 'True' : 'False';
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#ffffff'
+                        }
+                    }
+                }
+            }
+        };
+
+        Object.entries(expressionHistory).forEach(([expression, data]) => {
+            const chartContainer = document.getElementById(`${expression}-chart`);
+            if (!chartContainer) return;
+
+            const canvas = chartContainer.querySelector('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Sort data by timestamp
+            const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
+
+            // Create or update chart
+            if (!chartContainer.chart) {
+                chartContainer.chart = new Chart(ctx, {
+                    ...chartOptions,
+                    data: {
+                        datasets: [{
+                            label: `${expression} Detection`,
+                            data: sortedData.map(d => ({
+                                x: d.timestamp,
+                                // Convert matches from boolean to number
+                                y: d.matches ? 1 : 0
+                            })),
+                            borderColor: '#2d8cff',
+                            // Make the line stepped
+                            stepped: true,
+                            tension: 0
+                        }]
+                    }
+                });
+
+                // Add fullscreen button
+                const fullscreenBtn = document.createElement('button');
+                fullscreenBtn.className = 'fullscreen-button';
+                fullscreenBtn.innerHTML = '<i class="fas fa-expand"></i>';
+                fullscreenBtn.onclick = () => {
+                    chartContainer.classList.toggle('fullscreen');
+                    fullscreenBtn.innerHTML = chartContainer.classList.contains('fullscreen') ?
+                        '<i class="fas fa-compress"></i>' : '<i class="fas fa-expand"></i>';
+                    chartContainer.chart.resize();
+                };
+                chartContainer.appendChild(fullscreenBtn);
+            } else {
+                // Update existing chart
+                chartContainer.chart.data.datasets[0].data = sortedData.map(d => ({
+                    x: d.timestamp,
+                    y: d.matches ? 1 : 0
+                }));
+                chartContainer.chart.update();
+            }
+        });
+    }
+
+    static showDashboardModal() {
+        const modal = document.getElementById('dashboard-modal');
+        const modalDashboard = document.getElementById('modal-dashboard');
+        const closeBtn = modal.querySelector('.modal-close');
+
+        // Show modal
+        modal.style.display = 'block';
+
+        // Copy graphs to modal
+        modalDashboard.innerHTML = '';
+        Object.entries(RTMSState.conversationManager.expressionHistory).forEach(([expression, data]) => {
+            const chartContainer = document.createElement('div');
+            chartContainer.className = 'chart-container';
+            chartContainer.id = `modal-${expression}-chart`;
+            
+            const title = document.createElement('h3');
+            title.textContent = `${expression.charAt(0).toUpperCase() + expression.slice(1)} Timeline`;
+            
+            const canvas = document.createElement('canvas');
+            
+            chartContainer.appendChild(title);
+            chartContainer.appendChild(canvas);
+            modalDashboard.appendChild(chartContainer);
+
+            // Sort data by timestamp
+            const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
+
+            const ctx = canvas.getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: `${expression} Detection`,
+                        data: sortedData.map(d => ({
+                            x: d.timestamp,
+                            y: d.matches ? 1 : 0
+                        })),
+                        borderColor: '#2d8cff',
+                        stepped: true,
+                        tension: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'second' },
+                            ticks: { color: '#ffffff' }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 1,
+                            ticks: { 
+                                color: '#ffffff',
+                                stepSize: 1,
+                                callback: function(value) {
+                                    return value === 1 ? 'True' : 'False';
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#ffffff' }
+                        }
+                    }
+                }
+            });
+        });
+
+        // Close button event listener
+        closeBtn.onclick = () => {
+            modal.style.display = 'none';
+        };
+
+        // Modal outside click to close
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
+    }
+
+    static meetingStartTime = null;
+    static timerInterval = null;
+    static MEETING_DURATION = 180; // 3 minutes = 180 seconds
+
+    static startMeetingTimer() {
+        this.meetingStartTime = Date.now();
+        this.updateTimer();
+        
+        this.timerInterval = setInterval(() => {
+            this.updateTimer();
+        }, 1000);
+    }
+
+    static updateTimer() {
+        const elapsedSeconds = Math.floor((Date.now() - this.meetingStartTime) / 1000);
+        const remainingSeconds = Math.max(0, this.MEETING_DURATION - elapsedSeconds);
+        
+        // update remaining time display
+        const minutes = Math.floor(remainingSeconds / 60);
+        const seconds = remainingSeconds % 60;
+        const timeDisplay = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        document.getElementById('remainingTime').textContent = timeDisplay;
+
+        // if time is up
+        if (remainingSeconds === 0) {
+            this.stopMeetingTimer();
+            
+            // show session analysis modal
+            const modal = document.getElementById('session-analysis-modal');
+            if (modal) {
+                modal.style.display = 'block';
+                
+                // show loading
+                const loadingContainer = modal.querySelector('.loading-container');
+                if (loadingContainer) {
+                    loadingContainer.style.display = 'block';
+                }
+                
+                // generate analysis content
+                if (RTMSState.conversationManager) {
+                    RTMSState.conversationManager.generateAnalysis().then(() => {
+                        if (loadingContainer) {
+                            loadingContainer.style.display = 'none';
+                        }
+                    });
+                }
+            }
+
+            // end meeting
+            this.handleEnd();
+        }
+    }
+
+    static stopMeetingTimer() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+    }
+
+    static updateMeetingDuration() {
+        if (!this.meetingStartTime) return;
+        
+        const elapsedSeconds = Math.floor((Date.now() - this.meetingStartTime) / 1000);
+        const minutes = Math.floor(elapsedSeconds / 60);
+        const seconds = elapsedSeconds % 60;
+        const durationDisplay = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        document.getElementById('meetingDuration').textContent = durationDisplay;
     }
 }
 

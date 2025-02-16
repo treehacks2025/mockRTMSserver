@@ -74,6 +74,7 @@ class APIHandler {
             UIController.addSignalingLog('Meeting Start Success', {
                 server_urls: payload.sent.payload.payload.object.server_urls
             });
+            UIController.startMeetingTimer(); // start timer
             await MediaHandler.startMediaStream(payload.sent.payload.payload.object.server_urls);
         } else {
             UIController.addSignalingLog('Meeting Start Failed', payload);
@@ -146,6 +147,38 @@ class APIHandler {
         } catch (error) {
             console.error("Text-to-speech error:", error);
             UIController.addSystemLog('ElevenLabs', 'Text-to-speech error', { error: error.message });
+            throw error;
+        }
+    }
+
+    static async analyzeEmotion(audioBlob) {
+        try {
+            UIController.addSystemLog('Gemini', 'Sending emotion analysis request');
+            
+            const response = await fetch('/api/analyze-emotion', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'audio/wav'
+                },
+                body: audioBlob
+            });
+    
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+    
+            const result = await response.json();
+            
+            if (!result.success) {
+                throw new Error(result.error || 'Emotion analysis failed');
+            }
+
+            UIController.addSystemLog('Gemini', 'Emotion analysis completed');
+            
+            return result.analysis;
+        } catch (error) {
+            console.error("Emotion analysis error:", error);
+            UIController.addSystemLog('Gemini', 'Emotion analysis error', { error: error.message });
             throw error;
         }
     }

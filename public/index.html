@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
     <head>
-        <title>Video Meeting</title>
+        <title>Tea Ritual</title>
         <link rel="stylesheet" href="/css/styles.css">
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     </head>
@@ -9,7 +9,7 @@
         <div class="container">
             <div class="main-content">
                 <div class="meeting-header">
-                    <h2 class="meeting-title">RTMS Mock Server</h2>
+                    <h2 class="meeting-title">Tea Ritual - <span id="remainingTime">03:00</span></h2>
                 </div>
 
                 <div class="form-group">
@@ -40,7 +40,7 @@
 
                 <div class="controls">
                     <button id="sendBtn" disabled>
-                        <i class="fas fa-video"></i> Start Meeting
+                        <i class="fas fa-video"></i> Start Ritual
                     </button>
                     <button id="pauseBtn" disabled>
                         <i class="fas fa-pause"></i> Pause RTMS
@@ -52,10 +52,10 @@
                         <i class="fas fa-stop"></i> Stop RTMS
                     </button>
                     <button id="startRtmsBtn" disabled>
-                        <i class="fas fa-play-circle"></i> Start RTMS
+                        <i class="fas fa-play-circle"></i> Start New Ritual
                     </button>
                     <button id="endBtn" disabled>
-                        <i class="fas fa-phone-slash"></i> End Meeting
+                        <i class="fas fa-phone-slash"></i> End Ritual
                     </button>
                 </div>
             </div>
@@ -65,6 +65,7 @@
                     <button class="tab-button active" data-tab="transcripts">Transcripts</button>
                     <button class="tab-button" data-tab="logs">Logs</button>
                     <button class="tab-button" data-tab="expressions">Expressions</button>
+                    <button class="tab-button" data-tab="dashboard">Dashboard</button>
                 </div>
 
                 <div id="transcripts-container" class="logs-container">
@@ -92,7 +93,7 @@
                             <div class="expression-explanation"></div>
                         </div>
                         <div class="expression-card" id="relaxed-state">
-                            <div class="expression-icon"><i class="fas fa-face-smile-relaxed"></i></div>
+                            <div class="expression-icon"><i class="fas fa-face-smile"></i></div>
                             <div class="expression-title">Relaxed</div>
                             <div class="expression-status"></div>
                             <div class="expression-confidence"></div>
@@ -117,8 +118,101 @@
             </div>
         </div>
 
+        <div id="dashboard-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Expression Analysis Dashboard</h2>
+                    <button class="modal-close"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div id="modal-dashboard">
+                        <div class="chart-container" id="furrowed-chart">
+                            <h3>Furrowed Brow Timeline</h3>
+                            <canvas></canvas>
+                        </div>
+                        <div class="chart-container" id="smiling-chart">
+                            <h3>Smiling Timeline</h3>
+                            <canvas></canvas>
+                        </div>
+                        <div class="chart-container" id="relaxed-chart">
+                            <h3>Relaxed Timeline</h3>
+                            <canvas></canvas>
+                        </div>
+                        <div class="chart-container" id="eyesClosed-chart">
+                            <h3>Eyes Closed Timeline</h3>
+                            <canvas></canvas>
+                        </div>
+                        <div class="chart-container" id="eyesFocused-chart">
+                            <h3>Eyes Focused Timeline</h3>
+                            <canvas></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="session-analysis-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-header-content">
+                        <h2>Ritual Analysis Report</h2>
+                        <span class="ritual-duration" id="meetingDuration">00:00</span>
+                    </div>
+                    <button class="modal-close"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div class="loading-container" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Analyzing session...</p>
+                    </div>
+                    <div id="analysis-content">
+                        <div class="analysis-section">
+                            <h3>Emotional Journey</h3>
+                            <p id="emotional-journey"></p>
+                        </div>
+                        <div class="analysis-section">
+                            <h3>Relaxation Level</h3>
+                            <p id="relaxation-level"></p>
+                        </div>
+                        <div class="analysis-section">
+                            <h3>Key Moments</h3>
+                            <ul id="key-moments"></ul>
+                        </div>
+                        <div class="analysis-section">
+                            <h3>Recommendations</h3>
+                            <ul id="recommendations"></ul>
+                        </div>
+                        <div id="analysis-dashboard">
+                            <div class="chart-container" id="analysis-furrowed-chart">
+                                <h3>Furrowed Brow Timeline</h3>
+                                <canvas></canvas>
+                            </div>
+                            <div class="chart-container" id="analysis-smiling-chart">
+                                <h3>Smiling Timeline</h3>
+                                <canvas></canvas>
+                            </div>
+                            <div class="chart-container" id="analysis-relaxed-chart">
+                                <h3>Relaxed Timeline</h3>
+                                <canvas></canvas>
+                            </div>
+                            <div class="chart-container" id="analysis-eyesClosed-chart">
+                                <h3>Eyes Closed Timeline</h3>
+                                <canvas></canvas>
+                            </div>
+                            <div class="chart-container" id="analysis-eyesFocused-chart">
+                                <h3>Eyes Focused Timeline</h3>
+                                <canvas></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.22/dist/bundle.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 
         <!-- Configuration -->
         <script src="/js/config.js"></script>
@@ -140,29 +234,41 @@
         <script src="/js/audio-processor.js"></script>
 
         <script>
-            // Initialize all components
-            document.addEventListener('DOMContentLoaded', async () => {
-                // Initialize Luma background video
-                await APIHandler.initializeLumaBackground();
-                APIHandler.startLumaBackgroundUpdates();
 
-                // Initialize tab handling
-                document.querySelectorAll('.tab-button').forEach(button => {
-                    button.addEventListener('click', () => {
-                        // Update active tab
-                        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-                        button.classList.add('active');
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.addEventListener('click', () => {
+                    const tabName = button.dataset.tab;
+                    
+                    if (tabName === 'dashboard') {
+                        document.getElementById('dashboard-modal').style.display = 'block';
+                        return;
+                    }
 
-                        // Show/hide containers
-                        const tabName = button.dataset.tab;
-                        document.getElementById('transcripts-container').style.display = 
-                            tabName === 'transcripts' ? 'block' : 'none';
-                        document.getElementById('logs-container').style.display = 
-                            tabName === 'logs' ? 'block' : 'none';
-                        document.getElementById('expressions-container').style.display = 
-                            tabName === 'expressions' ? 'block' : 'none';
-                    });
+                    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+
+                    document.getElementById('transcripts-container').style.display = 
+                        tabName === 'transcripts' ? 'block' : 'none';
+                    document.getElementById('logs-container').style.display = 
+                        tabName === 'logs' ? 'block' : 'none';
+                    document.getElementById('expressions-container').style.display = 
+                        tabName === 'expressions' ? 'block' : 'none';
                 });
+            });
+
+            // Add modal close processing
+            document.querySelector('.modal-close').addEventListener('click', () => {
+                document.getElementById('dashboard-modal').style.display = 'none';
+                // Remove dashboard tab selection
+                document.querySelector('[data-tab="dashboard"]').classList.remove('active');
+            });
+
+            // Add modal outside click processing
+            document.getElementById('dashboard-modal').addEventListener('click', (e) => {
+                if (e.target === document.getElementById('dashboard-modal')) {
+                    document.getElementById('dashboard-modal').style.display = 'none';
+                    document.querySelector('[data-tab="dashboard"]').classList.remove('active');
+                }
             });
 
             // Function to add transcript
@@ -182,6 +288,25 @@
                 entry.appendChild(content);
                 transcriptDiv.appendChild(entry);
             }
+
+            // Process close button for session analysis modal
+            document.querySelectorAll('.modal-close').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const modal = e.target.closest('.modal');
+                    if (modal) {
+                        modal.style.display = 'none';
+                    }
+                });
+            });
+
+            // Process modal outside click
+            document.querySelectorAll('.modal').forEach(modal => {
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        modal.style.display = 'none';
+                    }
+                });
+            });
         </script>
     </body>
 </html>
