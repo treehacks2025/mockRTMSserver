@@ -24,8 +24,14 @@
                 </div>
 
                 <div class="video-container">
-                    <video id="mediaVideo" autoplay playsinline muted></video>
-                    <audio id="mediaAudio" autoplay></audio>
+                    <div class="video-wrapper top-video">
+                        <video id="remoteVideo" autoplay playsinline muted></video>
+                        <audio id="remoteAudio" autoplay></audio>
+                    </div>
+                    <div class="video-wrapper bottom-video">
+                        <video id="mediaVideo" autoplay playsinline muted></video>
+                        <audio id="mediaAudio" autoplay></audio>
+                    </div>
                 </div>
 
                 <div class="controls">
@@ -130,21 +136,28 @@
         <script src="/js/audio-processor.js"></script>
 
         <script>
-            // Handle tabs
-            document.querySelectorAll('.tab-button').forEach(button => {
-                button.addEventListener('click', () => {
-                    // Update active tab
-                    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-                    button.classList.add('active');
+            // Initialize all components
+            document.addEventListener('DOMContentLoaded', async () => {
+                // Initialize Luma background video
+                await APIHandler.initializeLumaBackground();
+                APIHandler.startLumaBackgroundUpdates();
 
-                    // Show/hide containers
-                    const tabName = button.dataset.tab;
-                    document.getElementById('transcripts-container').style.display = 
-                        tabName === 'transcripts' ? 'block' : 'none';
-                    document.getElementById('logs-container').style.display = 
-                        tabName === 'logs' ? 'block' : 'none';
-                    document.getElementById('expressions-container').style.display = 
-                        tabName === 'expressions' ? 'block' : 'none';
+                // Initialize tab handling
+                document.querySelectorAll('.tab-button').forEach(button => {
+                    button.addEventListener('click', () => {
+                        // Update active tab
+                        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                        button.classList.add('active');
+
+                        // Show/hide containers
+                        const tabName = button.dataset.tab;
+                        document.getElementById('transcripts-container').style.display = 
+                            tabName === 'transcripts' ? 'block' : 'none';
+                        document.getElementById('logs-container').style.display = 
+                            tabName === 'logs' ? 'block' : 'none';
+                        document.getElementById('expressions-container').style.display = 
+                            tabName === 'expressions' ? 'block' : 'none';
+                    });
                 });
             });
 
