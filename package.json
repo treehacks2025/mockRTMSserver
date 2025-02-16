@@ -12,7 +12,8 @@
   "homepage": "https://github.com/zoom/rtms-mock-server-sample#readme",
   "main": "main.js",
   "scripts": {
-    "start": "node main.js"
+    "start": "node main.js",
+    "dev": "nodemon main.js --ignore 'public/*' --ignore 'data/*'"
   },
   "keywords": [],
   "author": "",
@@ -20,8 +21,12 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.17.1",
+    "groq-sdk": "^0.3.3",
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^2.6.1",
-    "ws": "^8.2.3"
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
   }
 }

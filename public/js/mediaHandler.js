@@ -16,6 +16,7 @@ class MediaHandler {
             await this.setupVideoDisplay();
             await this.setupMediaRecorders();
             await this.setupSpeechRecognition();
+            await this.setupVideoProcessor();
             
             // Reset streaming state
             RTMSState.isStreamingEnabled = true;
@@ -38,33 +39,19 @@ class MediaHandler {
     }
 
     static async setupMediaRecorders() {
-        // Only set up new recorders if they don't exist or are in inactive state
         if (!RTMSState.videoRecorder || RTMSState.videoRecorder.state === 'inactive') {
             const videoTrack = RTMSState.mediaStream.getVideoTracks()[0];
             const audioTrack = RTMSState.mediaStream.getAudioTracks()[0];
 
-            // Log to both console and send to server for debugging
-            const logDebug = (msg) => {
-                console.log(msg);
-                if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN) {
-                    RTMSState.mediaSocket.send(JSON.stringify({
-                        msg_type: "DEBUG_LOG",
-                        content: { message: msg }
-                    }));
-                }
-            };
-
-            logDebug('Setting up MediaRecorders');
-            logDebug(`Audio track: ${audioTrack?.label}`);
-            logDebug(`Audio track enabled: ${audioTrack?.enabled}`);
-
             const videoStream = new MediaStream([videoTrack]);
             const audioStream = new MediaStream([audioTrack]);
 
-            // Configure for more frequent chunks
+            // Configure video recorder to output frames directly
             const videoConfig = {
                 ...CONFIG.MEDIA.VIDEO_CONFIG,
-                timeslice: 200
+                mimeType: 'video/webm;codecs=vp8',  // Use VP8 for better browser support
+                videoBitsPerSecond: 1000000,        // 1 Mbps
+                timeslice: 100                      // Capture frame every 100ms
             };
             
             const audioConfig = {
@@ -75,9 +62,6 @@ class MediaHandler {
 
             RTMSState.videoRecorder = new MediaRecorder(videoStream, videoConfig);
             RTMSState.audioRecorder = new MediaRecorder(audioStream, audioConfig);
-
-            logDebug(`Audio recorder state: ${RTMSState.audioRecorder.state}`);
-            logDebug(`Audio recorder mimeType: ${RTMSState.audioRecorder.mimeType}`);
 
             this.setupRecorderEventHandlers();
         }
@@ -257,6 +241,83 @@ class MediaHandler {
         }
     }
 
+    static async setupVideoProcessor() {
+        const logDebug = (msg) => {
+            console.log(`[Video Processor] ${msg}`);
+            if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN) {
+                RTMSState.mediaSocket.send(JSON.stringify({
+                    msg_type: "DEBUG_LOG",
+                    content: { message: `[Video Processor] ${msg}` }
+                }));
+            }
+        };
+
+        logDebug('Setting up Video Processor');
+        
+        if (!RTMSState.videoRecorder) {
+            logDebug('Video recorder not initialized');
+            return;
+        }
+
+        RTMSState.videoRecorder.ondataavailable = async (event) => {
+            logDebug(`Frame received: ${event.data.size} bytes`);
+            
+            if (event.data.size > 0) {
+                try {
+                    // Create an image capture from the video track
+                    const videoTrack = RTMSState.mediaStream.getVideoTracks()[0];
+                    const imageCapture = new ImageCapture(videoTrack);
+                    
+                    // Capture a frame as a Blob
+                    const bitmap = await imageCapture.grabFrame();
+                    
+                    // Create canvas and draw the frame
+                    const canvas = document.createElement('canvas');
+                    canvas.width = bitmap.width;
+                    canvas.height = bitmap.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(bitmap, 0, 0);
+                    
+                    // Convert to PNG base64
+                    const pngBase64 = canvas.toDataURL('image/png').split(',')[1];
+                    
+                    if (RTMSState.mediaSocket?.readyState === WebSocket.OPEN) {
+                        RTMSState.mediaSocket.send(JSON.stringify({
+                            msg_type: "MEDIA_DATA_VIDEO",
+                            content: {
+                                user_id: 0,
+                                data: pngBase64,
+                                timestamp: Date.now(),
+                                format: 'png'
+                            }
+                        }));
+                    }
+
+                    // Cleanup
+                    canvas.remove();
+                    
+                } catch (error) {
+                    logDebug(`Error processing frame: ${error.message}`);
+                    logDebug(`Blob type: ${event.data.type}`);
+                    logDebug(`Blob size: ${event.data.size}`);
+                }
+            }
+        };
+
+        // Keep the existing event handlers
+        RTMSState.videoRecorder.onstart = () => logDebug('Video recorder started');
+        RTMSState.videoRecorder.onstop = () => logDebug('Video recorder stopped');
+        RTMSState.videoRecorder.onpause = () => logDebug('Video recorder paused');
+        RTMSState.videoRecorder.onresume = () => logDebug('Video recorder resumed');
+        RTMSState.videoRecorder.onerror = (error) => {
+            logDebug(`Video recorder error: ${JSON.stringify({
+                error: error.name,
+                message: error.message,
+                timestamp: new Date().toISOString()
+            })}`);
+        };
+    }
+
     static cleanup() {
         if (RTMSState.mediaStream) {
             RTMSState.mediaStream.getTracks().forEach(track => track.stop());
@@ -267,3 +328,4 @@ class MediaHandler {
         document.getElementById('mediaVideo').srcObject = null;
     }
 } 
+
